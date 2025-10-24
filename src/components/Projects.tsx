@@ -35,7 +35,7 @@ const projects: Project[] = [
     id: 3,
     name: "StaySphere",
     description: "A hotel booking app that helps users easily search, compare, and reserve accommodations with a seamless and user-friendly experience.",
-    mockupImage: "/MockUp/StaySphere.png",
+    mockupImage: "/MockUp/Staysphere.png",
     githubLink: "https://github.com/Sefukamil20R/staysphere-app",
     isClientWork: false,
   },
