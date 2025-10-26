@@ -9,7 +9,7 @@ const navLinks = [
   // { name: "About", href: "#about" },
   // { name: "Skills", href: "#skills" },
   { name: "Experience", href: "#experience" },
-  { name: "Projects", href: "#projects" },
+    { name: "Projects", href: "#projects" },
   // { name: "Certificates", href: "#certificates" },
   { name: "Testimonials", href: "#testimonials" },
   { name: "Contact", href: "#contact" },
@@ -17,6 +17,7 @@ const navLinks = [
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
+  // activeSection holds the id of the active section (without '#'), or empty when none
   const [activeSection, setActiveSection] = useState("")
   const [scrolled, setScrolled] = useState(false)
   const { scrollY } = useScroll()
@@ -27,19 +28,41 @@ export default function Navbar() {
     setScrolled(window.scrollY > 20)
 
     const sectionIds = navLinks.map((link) => link.href.substring(1))
+    // Use multiple thresholds and pick the most visible section so the
+    // active link updates reliably even when you scroll to the bottom.
     const observerOptions = {
       root: null,
-      rootMargin: '0px',
-      threshold: 0.5,
+      // small negative top/bottom margins help mark a section active a bit
+      // before/after it crosses the exact middle of the viewport
+      rootMargin: '0px 0px -10% 0px',
+      threshold: [0, 0.25, 0.5, 0.75],
     }
 
     const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const id = entry.target.id
-        if (entry.isIntersecting) {
-          setActiveSection(`#${id}`)
+      // Check if we're in Hero (above the first section) — prevent highlighting Experience on page load
+      const firstSectionId = sectionIds[0]
+      const firstEl = document.getElementById(firstSectionId)
+      if (firstEl && window.scrollY < firstEl.offsetTop - window.innerHeight * 0.1) {
+        setActiveSection("")
+        return
+      }
+
+      // From the callback entries pick the entry with the largest
+      // intersectionRatio that is intersecting — this avoids losing the
+      // active state near the page bottom where a 0.5 threshold can fail.
+      const visible = entries.filter((e) => e.isIntersecting)
+      if (visible.length > 0) {
+        const mostVisible = visible.reduce((a, b) => (a.intersectionRatio > b.intersectionRatio ? a : b))
+        const id = mostVisible.target.id
+        setActiveSection(id)
+      } else {
+        // If nothing is intersecting (very short sections or fast scroll),
+        // try to find the section nearest to viewport top as a fallback.
+        const sorted = entries.sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+        if (sorted[0]) {
+          setActiveSection(sorted[0].target.id)
         }
-      })
+      }
     }, observerOptions)
 
     sectionIds.forEach((id) => {
@@ -47,11 +70,68 @@ export default function Navbar() {
       if (el) observer.observe(el)
     })
 
-    const onScroll = () => setScrolled(window.scrollY > 20)
+    // Additional scroll-based fallback: pick the section whose center
+    // overlaps the viewport center. This helps when the last section
+    // doesn't reach observer thresholds (e.g. at page bottom).
+    let rafId: number | null = null
+  const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean) as HTMLElement[]
+
+    const updateActiveByScroll = () => {
+      if (rafId) return
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null
+        const vpCenter = window.innerHeight * 0.4 // slightly above center
+        let foundId: string | null = null
+
+        for (const el of sections) {
+          const rect = el.getBoundingClientRect()
+          if (rect.top <= vpCenter && rect.bottom >= vpCenter) {
+            foundId = el.id
+            break
+          }
+        }
+
+        if (!foundId) {
+          // fallback: choose the section whose top is nearest to vpCenter
+          let closest: { id: string; distance: number } | null = null
+          for (const el of sections) {
+            const rect = el.getBoundingClientRect()
+            const distance = Math.abs(rect.top - vpCenter)
+            if (!closest || distance < closest.distance) {
+              closest = { id: el.id, distance }
+            }
+          }
+          if (closest) foundId = closest.id
+        }
+
+        // If the first section is still below the vpCenter, assume we're in Hero and clear highlight
+        if (sections.length > 0) {
+          const firstRect = sections[0].getBoundingClientRect()
+          if (firstRect.top > vpCenter) {
+            setActiveSection("")
+            return
+          }
+        }
+
+        if (foundId) setActiveSection(foundId)
+      })
+    }
+
+    const onScroll = () => {
+      setScrolled(window.scrollY > 20)
+      updateActiveByScroll()
+    }
+
     window.addEventListener('scroll', onScroll)
+    window.addEventListener('resize', updateActiveByScroll)
+
+    // run once to initialize
+    updateActiveByScroll()
 
     return () => {
       window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', updateActiveByScroll)
+      if (rafId) window.cancelAnimationFrame(rafId)
       observer.disconnect()
     }
   }, [])
@@ -63,7 +143,7 @@ export default function Navbar() {
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       // update active state immediately
-      setActiveSection(href)
+      setActiveSection(id)
     } else {
       // fallback: navigate normally
       window.location.hash = href
@@ -137,7 +217,8 @@ export default function Navbar() {
 
             <div className="hidden md:flex items-center space-x-1">
               {navLinks.map((link, index) => {
-                const isActive = activeSection === link.href
+                const linkId = link.href.replace('#', '')
+                const isActive = activeSection === linkId
                 return (
                   <motion.div
                     key={link.name}
@@ -249,7 +330,8 @@ export default function Navbar() {
               >
                 <div className="px-4 py-6 space-y-2">
                   {navLinks.map((link, index) => {
-                    const isActive = activeSection === link.href
+                    const linkId = link.href.replace('#', '')
+                    const isActive = activeSection === linkId
                     return (
                       <motion.div
                         key={link.name}

@@ -3,7 +3,7 @@
 import type React from "react"
 import { motion } from "framer-motion"
 import { Mail, Phone, Send } from "lucide-react"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 
 const containerVariants: any = {
   hidden: { opacity: 0 },
@@ -33,11 +33,17 @@ export default function Contact() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle")
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+
+  
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
+
+  const formRef = useRef<HTMLFormElement | null>(null)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -45,23 +51,30 @@ export default function Contact() {
     setSubmitStatus("idle")
 
     try {
-  const response = await fetch("https://formspree.io/f/YOUR_FORM_ID", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
+      const gotcha = (formRef.current?.querySelector('input[name="_gotcha"]') as HTMLInputElement | null)?.value || ''
+
+      // Post directly to Formspree
+      const response = await fetch(process.env.NEXT_PUBLIC_CONTACT_ENDPOINT!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ ...formData, _gotcha: gotcha, _next: window.location.href }),
       })
 
       if (response.ok) {
-        setSubmitStatus("success")
-        setFormData({ name: "", email: "", message: "" })
-        setTimeout(() => setSubmitStatus("idle"), 3000)
+        setSubmitStatus('success')
+        setFormData({ name: '', email: '', message: '' })
+        // show success for 30s
+        setTimeout(() => setSubmitStatus('idle'), 30000)
       } else {
-        setSubmitStatus("error")
+        const json = await response.json().catch(() => null)
+        setSubmitStatus('error')
+        // eslint-disable-next-line no-console
+        console.error('Formspree error', json)
       }
-    } catch (error) {
-      setSubmitStatus("error")
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Submission exception', err)
+      setSubmitStatus('error')
     } finally {
       setIsSubmitting(false)
     }
@@ -88,10 +101,14 @@ export default function Contact() {
 
         {/* Form */}
         <motion.form
+          ref={formRef}
           onSubmit={handleSubmit}
           className="bg-[#373543] rounded-2xl p-8 sm:p-10 shadow-2xl backdrop-blur-sm border border-[#bb852b]/10"
           variants={itemVariants}
         >
+          {/* Honeypot field to help Formspree detect spam without showing reCAPTCHA */}
+          <input type="text" name="_gotcha" style={{ display: 'none' }} />
+
           {/* Name Field */}
           <motion.div className="mb-6" variants={itemVariants}>
             <label htmlFor="name" className="block text-white font-medium mb-2">
@@ -144,20 +161,22 @@ export default function Contact() {
           </motion.div>
 
           {/* Status Messages */}
-          {submitStatus === "success" && (
+          {submitStatus === 'success' && (
             <motion.div
-              className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-center"
+              className="text-green-400 text-center mb-4 font-medium"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
             >
-              Message sent successfully! I'll get back to you soon.
+              Message sent successfully!
             </motion.div>
           )}
-          {submitStatus === "error" && (
+          {submitStatus === 'error' && (
             <motion.div
-              className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-center"
+              className="text-red-400 text-center mb-4 font-medium"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
             >
               Failed to send message. Please try again.
             </motion.div>
@@ -174,7 +193,7 @@ export default function Contact() {
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               {isSubmitting ? "Sending..." : "Send Message"}
-              {!isSubmitting && <Send size={18} />}
+              <Send size={18} />
             </span>
             <motion.div
               className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20"
@@ -196,23 +215,41 @@ export default function Contact() {
           {/* Phone Icon */}
           <motion.a
             href="tel:+251987161875"
-            className="p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              // Try to navigate to tel: URL — some desktop browsers won't open a phone app if none is installed
+              window.location.href = "tel:+251987161875"
+            }}
+            className="group relative p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
             whileHover={{ scale: 1.1, rotate: 5 }}
             whileTap={{ scale: 0.95 }}
             title="Call me"
           >
             <Phone size={24} />
+            <span className="pointer-events-none absolute -top-10 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-[#111] text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-30">
+              +251 98 716 1875
+            </span>
           </motion.a>
 
           {/* Email Icon */}
           <motion.a
             href="mailto:tenzilk20@gmail.com"
-            className="p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              // Navigate to mailto: which should open the user's mail client
+              window.location.href = "mailto:tenzilk20@gmail.com"
+            }}
+            className="group relative p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
             whileHover={{ scale: 1.1, rotate: 5 }}
             whileTap={{ scale: 0.95 }}
             title="Send me an email"
           >
             <Mail size={24} />
+            <span className="pointer-events-none absolute -top-10 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-[#111] text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-30">
+              tenzilk20@gmail.com
+            </span>
           </motion.a>
 
           {/* Telegram Icon */}
@@ -220,7 +257,7 @@ export default function Contact() {
             href="https://t.me/Tenzil20"
             target="_blank"
             rel="noopener noreferrer"
-            className="p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
+            className="group relative p-3 rounded-full bg-[#373543] border border-[#bb852b]/20 text-[#bb852b] hover:bg-[#bb852b] hover:text-white transition-all duration-300 hover:shadow-lg hover:shadow-[#bb852b]/40"
             whileHover={{ scale: 1.1, rotate: 5 }}
             whileTap={{ scale: 0.95 }}
             title="Message me on Telegram"
@@ -228,6 +265,9 @@ export default function Contact() {
             <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
               <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.328-.373-.115l-6.869 4.332-2.97-.924c-.644-.203-.658-.644.135-.954l11.593-4.47c.537-.196 1.006.128.832.941z" />
             </svg>
+            <span className="pointer-events-none absolute -top-10 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-[#111] text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-30">
+              @Tenzil20
+            </span>
           </motion.a>
         </motion.div>
       </motion.div>
